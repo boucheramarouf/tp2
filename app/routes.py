@@ -8,7 +8,7 @@ from .crud import (
     get_movies, get_movie, create_movie, update_movie, delete_movie,
     get_user_by_email, create_user, authenticate_user, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from .dependencies import get_db, get_current_user, get_current_admin
+from .dependencies import get_db, get_current_user, get_current_admin, require_admin, require_user_or_admin  # AJOUT
 from .schema import Movie, MovieCreate, MovieUpdate, VALID_GENRES, UserRegister, UserLogin, Token
 from .models import User
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/movies", tags=["Movies"])
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
-# Routes d'authentification
+# Routes d'authentification (publiques)
 @auth_router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(user_data: UserRegister, db: Session = Depends(get_db)):
     user = create_user(db, user_data.model_dump())
@@ -49,12 +49,13 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer"
     }
 
-# Routes Admin
+# Routes Admin (admin only)
 @admin_router.get("/users")
 def get_all_users(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(require_admin)  # CHANGÉ
 ):
+    """Gérer tous les utilisateurs - Admin only"""
     users = db.query(User).all()
     return {
         "users": [
@@ -71,8 +72,9 @@ def get_all_users(
 def create_admin_user(
     user_data: UserRegister,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_admin)
+    current_user: dict = Depends(require_admin)  # CHANGÉ
 ):
+    """Créer un admin - Admin only"""
     admin_data = user_data.model_dump()
     admin_data["role"] = "admin"
     
@@ -83,7 +85,9 @@ def create_admin_user(
         "role": user.role
     }
 
-# Routes Movies protégées
+# Routes Movies avec permissions spécifiques
+
+# Voir tous les films - User et Admin
 @router.get("/", response_model=List[Movie])
 def list_movies(
     title: str | None = None,
@@ -98,8 +102,9 @@ def list_movies(
     sort_by: str = Query("id", description="Champ de tri: title, year, audience_score, etc."),
     order: str = Query("asc", description="Ordre de tri: asc ou desc"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_user_or_admin)  # CHANGÉ
 ):
+    """Voir tous les films - User et Admin"""
     try:
         filters = {
             "title": title,
@@ -126,12 +131,14 @@ def list_movies(
             detail="Erreur interne du serveur lors de la récupération des films"
         )
 
+# Voir un film - User et Admin
 @router.get("/{movie_id}", response_model=Movie)
 def get_one_movie(
     movie_id: int, 
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_user_or_admin)  # CHANGÉ
 ):
+    """Voir un film - User et Admin"""
     if movie_id <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -146,12 +153,14 @@ def get_one_movie(
         )
     return movie
 
+# Ajouter un film - Admin only
 @router.post("/", response_model=Movie, status_code=status.HTTP_201_CREATED)
 def create_new_movie(
     data: MovieCreate, 
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)  # CHANGÉ
 ):
+    """Ajouter un film - Admin only"""
     try:   
         current_year = 2024  
         if data.year >= current_year - 2 and data.audience_score == 0:
@@ -181,13 +190,15 @@ def create_new_movie(
             detail="Erreur interne du serveur lors de la création du film"
         )
 
+# Modifier un film (PUT) - Admin only
 @router.put("/{movie_id}", response_model=Movie)
 def update_one_movie_put(
     movie_id: int, 
     data: MovieCreate, 
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)  # CHANGÉ
 ):
+    """Modifier un film (remplacement complet) - Admin only"""
     existing_movie = get_movie(db, movie_id)
     if not existing_movie:
         raise HTTPException(
@@ -218,13 +229,15 @@ def update_one_movie_put(
                 detail=str(e)
             )
 
+# Modifier un film (PATCH) - Admin only
 @router.patch("/{movie_id}", response_model=Movie)
 def update_one_movie(
     movie_id: int, 
     data: MovieUpdate, 
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)  # CHANGÉ
 ):
+    """Modifier un film (mise à jour partielle) - Admin only"""
     existing_movie = get_movie(db, movie_id)
     if not existing_movie:
         raise HTTPException(
@@ -275,12 +288,14 @@ def update_one_movie(
             detail="Erreur interne du serveur lors de la mise à jour du film"
         )
 
+# Supprimer un film - Admin only
 @router.delete("/{movie_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_movie(
     movie_id: int, 
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)  # CHANGÉ
 ):
+    """Supprimer un film - Admin only"""
     if movie_id <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

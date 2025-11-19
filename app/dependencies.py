@@ -45,3 +45,22 @@ def get_current_admin(user: dict = Depends(get_current_user)):
             detail="Accès réservé aux administrateurs"
         )
     return user
+
+# NOUVELLES FONCTIONS DE PERMISSIONS
+def require_admin(user: dict = Depends(get_current_user)):
+    """Permission pour les actions réservées aux admins"""
+    if user["role"] != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Action réservée aux administrateurs"
+        )
+    return user
+
+def require_user_or_admin(user: dict = Depends(get_current_user)):
+    """Permission pour les actions autorisées aux users et admins"""
+    if user["role"] not in ["user", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Action non autorisée"
+        )
+    return user
